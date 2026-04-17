@@ -52,6 +52,20 @@ final class LauncherButton: UIButton {
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// Replace the launcher's colors. Typically called after the server theme
+    /// fetch resolves.
+    func updateColors(background: UIColor, foreground: UIColor) {
+        backgroundColor = background
+        let chatImage = UIImage(systemName: "bubble.left.fill")?
+            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 20, weight: .medium))
+            .withTintColor(foreground, renderingMode: .alwaysOriginal)
+        let closeImage = UIImage(systemName: "xmark")?
+            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 20, weight: .bold))
+            .withTintColor(foreground, renderingMode: .alwaysOriginal)
+        chatIcon.image = chatImage
+        closeIcon.image = closeImage
+    }
+
     private var isRevealed = false
     /// Fade the launcher in. Safe to call multiple times; only the first call animates.
     func reveal() {

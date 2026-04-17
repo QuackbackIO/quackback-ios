@@ -9,8 +9,16 @@ public enum Quackback {
     private static let emitter = EventEmitter()
     private static var isShowing = false
     private static var pendingIdentify: String?
-    private static var serverThemeColor: UIColor?
+    private static var serverTheme: ServerTheme?
     private static var themeFetched = false
+
+    private struct ServerTheme {
+        let themeMode: String?
+        let lightPrimary: UIColor?
+        let lightPrimaryForeground: UIColor?
+        let darkPrimary: UIColor?
+        let darkPrimaryForeground: UIColor?
+    }
     private static var launcherRevealFallback: DispatchWorkItem?
     private static let launcherRevealFallbackDelay: TimeInterval = 1.5
 
@@ -51,8 +59,12 @@ public enum Quackback {
 
     public static func showLauncher() {
         guard let config, launcher == nil else { return }
-        let color = resolveColor(config: config)
-        let btn = LauncherButton(position: config.placement, color: color, foreground: defaultForeground)
+        let colors = resolveLauncherColors()
+        let btn = LauncherButton(
+            position: config.placement,
+            color: colors.background,
+            foreground: colors.foreground
+        )
         btn.addTarget(self, action: #selector(launcherTapped), for: .touchUpInside)
         if let w = keyWindow { btn.install(in: w) }; launcher = btn
         if themeFetched {
@@ -73,7 +85,7 @@ public enum Quackback {
 
     public static func destroy() {
         dismissPanel(); hideLauncher(); wvManager?.tearDown(); wvManager = nil
-        emitter.removeAll(); config = nil; pendingIdentify = nil; serverThemeColor = nil
+        emitter.removeAll(); config = nil; pendingIdentify = nil; serverTheme = nil
         themeFetched = false
         launcherRevealFallback?.cancel(); launcherRevealFallback = nil
     }
@@ -85,24 +97,57 @@ public enum Quackback {
     private static let defaultColor = UIColor.black
     private static let defaultForeground = UIColor(red: 250/255, green: 204/255, blue: 21/255, alpha: 1)
 
-    private static func resolveColor(config: QuackbackConfig) -> UIColor {
-        return serverThemeColor ?? defaultColor
+    private struct ResolvedLauncherColors {
+        let background: UIColor
+        let foreground: UIColor
+    }
+
+    private static func resolveLauncherColors() -> ResolvedLauncherColors {
+        guard let theme = serverTheme else {
+            return ResolvedLauncherColors(background: defaultColor, foreground: defaultForeground)
+        }
+        // themeMode on the server wins — it reflects what the iframe is actually
+        // showing. `user` means follow device preference.
+        let systemDark: Bool
+        if #available(iOS 13.0, *) {
+            systemDark = keyWindow?.traitCollection.userInterfaceStyle == .dark
+        } else {
+            systemDark = false
+        }
+        let useDark: Bool
+        switch theme.themeMode {
+        case "dark": useDark = true
+        case "light": useDark = false
+        default: useDark = systemDark
+        }
+        let background: UIColor = useDark
+            ? (theme.darkPrimary ?? theme.lightPrimary ?? defaultColor)
+            : (theme.lightPrimary ?? defaultColor)
+        let foreground: UIColor = useDark
+            ? (theme.darkPrimaryForeground ?? theme.lightPrimaryForeground ?? defaultForeground)
+            : (theme.lightPrimaryForeground ?? defaultForeground)
+        return ResolvedLauncherColors(background: background, foreground: foreground)
     }
 
     private static func fetchTheme(instanceUrl: URL) {
         let url = instanceUrl.appendingPathComponent("api/widget/config.json")
         URLSession.shared.dataTask(with: url) { data, _, _ in
-            let color: UIColor? = {
+            let theme: ServerTheme? = {
                 guard let data,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let theme = json["theme"] as? [String: Any] else { return nil }
-                return parseHex(theme["lightPrimary"] as? String)
+                      let t = json["theme"] as? [String: Any] else { return nil }
+                return ServerTheme(
+                    themeMode: t["themeMode"] as? String,
+                    lightPrimary: parseHex(t["lightPrimary"] as? String),
+                    lightPrimaryForeground: parseHex(t["lightPrimaryForeground"] as? String),
+                    darkPrimary: parseHex(t["darkPrimary"] as? String),
+                    darkPrimaryForeground: parseHex(t["darkPrimaryForeground"] as? String),
+                )
             }()
             DispatchQueue.main.async {
-                if let color {
-                    serverThemeColor = color
-                    launcher?.backgroundColor = color
-                }
+                if let theme { serverTheme = theme }
+                let colors = resolveLauncherColors()
+                launcher?.updateColors(background: colors.background, foreground: colors.foreground)
                 themeFetched = true
                 launcher?.reveal()
                 launcherRevealFallback?.cancel()

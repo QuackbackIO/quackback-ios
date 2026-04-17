@@ -20,7 +20,10 @@ public enum Quackback {
         let darkPrimaryForeground: UIColor?
     }
     private static var launcherRevealFallback: DispatchWorkItem?
-    private static let launcherRevealFallbackDelay: TimeInterval = 1.5
+    // Small post-fetch delay so the launcher doesn't pop in the instant the
+    // network request returns — matches web + Android.
+    private static let launcherRevealDelay: TimeInterval = 0.6
+    private static let launcherRevealFallbackDelay: TimeInterval = 1.8
 
     public static func configure(_ config: QuackbackConfig, identity: Identity? = nil) {
         self.config = config
@@ -149,9 +152,11 @@ public enum Quackback {
                 let colors = resolveLauncherColors()
                 launcher?.updateColors(background: colors.background, foreground: colors.foreground)
                 themeFetched = true
-                launcher?.reveal()
                 launcherRevealFallback?.cancel()
                 launcherRevealFallback = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + launcherRevealDelay) {
+                    launcher?.reveal()
+                }
             }
         }.resume()
     }

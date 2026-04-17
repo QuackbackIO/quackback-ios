@@ -71,7 +71,7 @@ final class LauncherButton: UIButton {
     func reveal() {
         guard !isRevealed else { return }
         isRevealed = true
-        UIView.animate(withDuration: 0.2) { self.alpha = 1 }
+        UIView.animate(withDuration: 0.45) { self.alpha = 1 }
     }
 
     func install(in window: UIWindow) {

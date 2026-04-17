@@ -11,17 +11,20 @@ final class LauncherButton: UIButton {
     private let chatIcon = UIImageView()
     private let closeIcon = UIImageView()
 
-    init(position: QuackbackPosition, color: UIColor) {
+    init(position: QuackbackPosition, color: UIColor, foreground: UIColor) {
         self.position = position; super.init(frame: .zero)
         backgroundColor = color; layer.cornerRadius = size / 2
         layer.shadowColor = UIColor.black.cgColor; layer.shadowOffset = CGSize(width: 0, height: 4)
         layer.shadowOpacity = 0.15; layer.shadowRadius = 6
+        // Hidden until the server theme is applied (or a fallback timer elapses),
+        // to avoid a flash of the default color before the brand color lands.
+        alpha = 0
         translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([widthAnchor.constraint(equalToConstant: size), heightAnchor.constraint(equalToConstant: size)])
 
         let chatImage = UIImage(systemName: "bubble.left.fill")?
             .withConfiguration(UIImage.SymbolConfiguration(pointSize: 20, weight: .medium))
-            .withTintColor(.white, renderingMode: .alwaysOriginal)
+            .withTintColor(foreground, renderingMode: .alwaysOriginal)
         chatIcon.image = chatImage
         chatIcon.contentMode = .scaleAspectFit
         chatIcon.translatesAutoresizingMaskIntoConstraints = false
@@ -30,7 +33,7 @@ final class LauncherButton: UIButton {
 
         let closeImage = UIImage(systemName: "xmark")?
             .withConfiguration(UIImage.SymbolConfiguration(pointSize: 20, weight: .bold))
-            .withTintColor(.white, renderingMode: .alwaysOriginal)
+            .withTintColor(foreground, renderingMode: .alwaysOriginal)
         closeIcon.image = closeImage
         closeIcon.contentMode = .scaleAspectFit
         closeIcon.translatesAutoresizingMaskIntoConstraints = false
@@ -48,6 +51,14 @@ final class LauncherButton: UIButton {
         }
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    private var isRevealed = false
+    /// Fade the launcher in. Safe to call multiple times; only the first call animates.
+    func reveal() {
+        guard !isRevealed else { return }
+        isRevealed = true
+        UIView.animate(withDuration: 0.2) { self.alpha = 1 }
+    }
 
     func install(in window: UIWindow) {
         window.addSubview(self)

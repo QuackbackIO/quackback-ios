@@ -10,6 +10,9 @@ public enum Quackback {
     private static var isShowing = false
     private static var pendingIdentify: String?
     private static var serverThemeColor: UIColor?
+    private static var themeFetched = false
+    private static var launcherRevealFallback: DispatchWorkItem?
+    private static let launcherRevealFallbackDelay: TimeInterval = 1.5
 
     public static func configure(_ config: QuackbackConfig, identity: Identity? = nil) {
         self.config = config
@@ -49,9 +52,16 @@ public enum Quackback {
     public static func showLauncher() {
         guard let config, launcher == nil else { return }
         let color = resolveColor(config: config)
-        let btn = LauncherButton(position: config.placement, color: color)
+        let btn = LauncherButton(position: config.placement, color: color, foreground: defaultForeground)
         btn.addTarget(self, action: #selector(launcherTapped), for: .touchUpInside)
         if let w = keyWindow { btn.install(in: w) }; launcher = btn
+        if themeFetched {
+            btn.reveal()
+        } else {
+            let work = DispatchWorkItem { launcher?.reveal() }
+            launcherRevealFallback = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + launcherRevealFallbackDelay, execute: work)
+        }
     }
     public static func hideLauncher() { launcher?.removeFromSuperview(); launcher = nil }
 
@@ -64,11 +74,16 @@ public enum Quackback {
     public static func destroy() {
         dismissPanel(); hideLauncher(); wvManager?.tearDown(); wvManager = nil
         emitter.removeAll(); config = nil; pendingIdentify = nil; serverThemeColor = nil
+        themeFetched = false
+        launcherRevealFallback?.cancel(); launcherRevealFallback = nil
     }
 
     // MARK: - Private
 
-    private static let defaultColor = UIColor(red: 99/255, green: 102/255, blue: 241/255, alpha: 1)
+    // Quackback brand defaults — used before the server theme fetch completes
+    // or if it fails. Amber-400 (#facc15) text on black.
+    private static let defaultColor = UIColor.black
+    private static let defaultForeground = UIColor(red: 250/255, green: 204/255, blue: 21/255, alpha: 1)
 
     private static func resolveColor(config: QuackbackConfig) -> UIColor {
         return serverThemeColor ?? defaultColor
@@ -77,15 +92,21 @@ public enum Quackback {
     private static func fetchTheme(instanceUrl: URL) {
         let url = instanceUrl.appendingPathComponent("api/widget/config.json")
         URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let theme = json["theme"] as? [String: Any] else { return }
-
-            let hex = theme["lightPrimary"] as? String
-            guard let color = parseHex(hex) else { return }
+            let color: UIColor? = {
+                guard let data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let theme = json["theme"] as? [String: Any] else { return nil }
+                return parseHex(theme["lightPrimary"] as? String)
+            }()
             DispatchQueue.main.async {
-                serverThemeColor = color
-                launcher?.backgroundColor = color
+                if let color {
+                    serverThemeColor = color
+                    launcher?.backgroundColor = color
+                }
+                themeFetched = true
+                launcher?.reveal()
+                launcherRevealFallback?.cancel()
+                launcherRevealFallback = nil
             }
         }.resume()
     }
